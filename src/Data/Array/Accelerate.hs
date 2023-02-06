@@ -195,6 +195,8 @@ module Data.Array.Accelerate (
   -- *** Introduction
   use, unit,
 
+  version,
+
   -- *** Initialisation
   generate, fill,
 
@@ -205,7 +207,7 @@ module Data.Array.Accelerate (
   (++), concatOn,
 
   -- *** Expansion
-  expand,
+  expand, expand',
 
   -- ** Composition
   -- *** Flow control
@@ -246,6 +248,7 @@ module Data.Array.Accelerate (
   -- *** Permutations
   -- **** Forward permutation (scatter)
   permute,
+  permute',
   scatter,
 
   -- **** Backward permutation (gather)
@@ -463,7 +466,7 @@ import qualified Data.Array.Accelerate.Sugar.Array                  as S
 import qualified Data.Array.Accelerate.Sugar.Shape                  as S
 
 import Data.Function                                                ( (&) )
-import Prelude                                                      ( (.), ($), Char, Show, flip, undefined, error, const, otherwise )
+import Prelude                                                      ( String, (.), ($), Char, Show, flip, undefined, error, const, otherwise )
 
 import GHC.Exts                                                     ( fromListN, fromString )
 import GHC.Generics                                                 ( Generic )
@@ -522,6 +525,9 @@ arraySize = S.size . S.shape
 {-# INLINE arrayReshape #-}
 arrayReshape :: (Shape sh, Shape sh') => sh -> Array sh' e -> Array sh e
 arrayReshape = S.reshape
+
+version :: String
+version = "Jaan's version"
 
 
 -- Named documentation chunks

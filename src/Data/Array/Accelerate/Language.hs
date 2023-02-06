@@ -57,7 +57,9 @@ module Data.Array.Accelerate.Language (
   scanl, scanl', scanl1, scanr, scanr', scanr1,
 
   -- * Permutations
-  permute, backpermute,
+  permute, permute', backpermute,
+
+  expand,
 
   -- * Stencil operations
   stencil, stencil2,
@@ -105,7 +107,7 @@ import Data.Array.Accelerate.Representation.Array                   ( ArrayR(..)
 import Data.Array.Accelerate.Representation.Shape                   ( ShapeR(..) )
 import Data.Array.Accelerate.Representation.Type
 import Data.Array.Accelerate.Smart                                  hiding ( arraysR )
-import Data.Array.Accelerate.Sugar.Array                            ( Arrays(..), Array, Scalar, Segments, arrayR )
+import Data.Array.Accelerate.Sugar.Array                            ( Arrays(..), Array, Vector, Scalar, Segments, arrayR )
 import Data.Array.Accelerate.Sugar.Elt
 import Data.Array.Accelerate.Sugar.Foreign
 import Data.Array.Accelerate.Sugar.Shape                            ( Shape(..), Slice(..), (:.) )
@@ -118,7 +120,10 @@ import Data.Array.Accelerate.Classes.Integral
 import Data.Array.Accelerate.Classes.Num
 import Data.Array.Accelerate.Classes.Ord
 
-import Prelude                                                      ( ($), (.), Maybe(..), Char )
+import Prelude                                                      ( ($), (.), Maybe(..), Char, id)
+import Data.Array.Accelerate.Lift (lift, unlift)
+import Data.Array.Accelerate.AST.Idx (PairIdx(..))
+import Data.Array.Accelerate.Representation.Type (TupR(..))
 
 
 -- $setup
@@ -785,13 +790,38 @@ scanr1 f (Acc a) = Acc $ SmartAcc $ Scan RightToLeft (eltR @a) (unExpBinaryFunct
 -- @-fno-fast-permute-const@.
 --
 permute
-    :: forall sh sh' a. (Shape sh, Shape sh', Elt a)
+    :: forall sh sh' a. (Shape sh, Shape sh', Elt a, Elt sh, Elt sh')
     => (Exp a -> Exp a -> Exp a)        -- ^ combination function
     -> Acc (Array sh' a)                -- ^ array of default values
     -> (Exp sh -> Exp (Maybe sh'))      -- ^ index permutation function
     -> Acc (Array sh  a)                -- ^ array of source values to be permuted
     -> Acc (Array sh' a)
-permute = Acc $$$$ applyAcc (Permute $ arrayR @sh @a)
+permute c (Acc d) p a = permute' c (Acc d) a'
+     where  a' = imap (\i e -> T2 (p i) e) a :: Acc (Array sh (Maybe sh', a))
+            imap f xs = zipWith f (generate (shape xs) id) xs
+
+-- | Specialised forward permutation
+-- 
+-- Specific variant of 'permute', that allows permutation and source array generation to be specified simultaneously.
+-- >>> let xs = use $ A.fromList (Z:.3) [0..]
+-- >>> let ys = use $ A.fromList (Z:.3) [(Just (Z:.0), 2), (Just (Z:.1), 1), (Just (Z:.2), 0)]
+-- >>> run $ permute' const xs ys
+-- Vector (Z :. 3) [2.0,1.0,0.0]
+--
+-- It can also be used in combination with expand:
+-- >>> let xs = use $ A.fromList (Z:.9) [0..]
+-- >>> let ys = use $ A.fromList (Z:.3) [0..]
+-- >>> let sz = const 3
+-- >>> let get x i = T2 (Just_ (I1 ((x + 1) * 3 - (i + 1)))) i
+-- >>> run $ permute' const xs (expand' sz get ys)
+-- Vector (Z :. 9) [2,1,0,2,1,0,2,1,0]
+permute'
+    :: forall sh sh' e t1 t2. (Shape sh, Shape sh', Elt e, t1 ~ (Maybe sh'), t2 ~ (PrimMaybe sh'))
+    => (Exp e -> Exp e -> Exp e)        -- ^ combination function
+    -> Acc (Array sh' e)                -- ^ array of default values
+    -> Acc (Array sh (Maybe sh' , e))   -- ^ array of indices to permute to and corresponding source values to be permuted
+    -> Acc (Array sh' e)
+permute' comb (Acc def) ar@(Acc a) = Acc $ applyAcc $ Permute (arrayR @sh @e) (unExpBinaryFunction comb) def (applyAcc (Map (TupRpair (TupRpair TupRunit (eltR @t1)) (eltR @e)) (TupRpair (eltR @t1) (eltR @e)) (\e -> SmartExp $ Pair (SmartExp $ Prj PairIdxRight (SmartExp $ Prj PairIdxLeft e)) (SmartExp $ Prj PairIdxRight e)) a))
 
 -- | Generalised backward permutation operation (array gather).
 --
@@ -843,6 +873,29 @@ backpermute
     -> Acc (Array sh  a)                -- ^ source array
     -> Acc (Array sh' a)
 backpermute = Acc $$$ applyAcc (Backpermute $ shapeR @sh')
+
+expand
+    :: forall sh a b. (Elt a, Elt b)
+    => (Exp a -> Exp Int)               -- ^ expansion size function
+    -> (Exp a -> (Exp Int -> Exp b))    -- ^ expansion element generation function
+    -> Acc (Vector  a)                  -- ^ source array
+    -> Acc (Vector  b)
+expand = Acc $$$ applyAcc (Expand (eltR @a) (eltR @b))
+
+-- map :: forall sh a b.
+--        (Shape sh, Elt a, Elt b)
+--     => (Exp a -> Exp b)
+--     -> Acc (Array sh a)
+--     -> Acc (Array sh b)
+-- map = Acc $$ applyAcc (Map (eltR @a) (eltR @b))
+
+-- generate
+--     :: forall sh a.
+--        (Shape sh, Elt a)
+--     => Exp sh
+--     -> (Exp sh -> Exp a)
+--     -> Acc (Array sh a)
+-- generate = Acc $$ applyAcc (Generate $ arrayR @sh @a)
 
 -- Stencil operations
 -- ------------------

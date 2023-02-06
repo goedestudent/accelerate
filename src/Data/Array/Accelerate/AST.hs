@@ -424,8 +424,8 @@ data PreOpenAcc (acc :: Type -> Type -> Type) aenv a where
   --
   Permute     :: Fun            aenv (e -> e -> e)              -- combination function
               -> acc            aenv (Array sh' e)              -- default values
-              -> Fun            aenv (sh -> PrimMaybe sh')      -- permutation function
-              -> acc            aenv (Array sh e)               -- source array
+              -- -> Fun            aenv (sh -> PrimMaybe sh')      -- permutation function
+              -> acc            aenv (Array sh (PrimMaybe sh', e))               -- source array
               -> PreOpenAcc acc aenv (Array sh' e)
 
   -- Generalised multi-dimensional backwards permutation; the permutation can
@@ -436,6 +436,37 @@ data PreOpenAcc (acc :: Type -> Type -> Type) aenv a where
               -> Fun            aenv (sh' -> sh)                -- permutation function
               -> acc            aenv (Array sh e)               -- source array
               -> PreOpenAcc acc aenv (Array sh' e)
+
+  -- TODO: Document correctly
+  -- Generalised multi-dimensional backwards permutation; the permutation can
+  -- be between arrays of varying shape; the permutation function must be total
+  --
+  Expand ::      TypeR e'
+              -> Fun            aenv (e -> Int)                 -- size function
+              -> Fun            aenv (e -> Int -> e')           -- element creation function
+              -> acc            aenv (Vector e)                 -- source array
+              -> PreOpenAcc acc aenv (Vector e')
+
+  PermutingExpand :: 
+              -- Data for the expand
+              TypeR e'
+              -> Fun            aenv (e -> Int)                 -- size function
+              -> Fun            aenv (e -> Int -> (PrimMaybe sh', e'))           -- element creation function
+              -> acc            aenv (Vector e)                 -- source array
+
+              -- Data for the permute
+              -> Fun            aenv (e' -> e' -> e')           -- combination function
+              -> acc            aenv (Array sh' e')             -- default values
+              -> PreOpenAcc acc aenv (Array sh' e')
+
+  -- Generate    :: ArrayR (Array sh e)
+  --             -> Exp            aenv sh                         -- output shape
+  --             -> Fun            aenv (sh -> e)                  -- representation function
+  --             -> PreOpenAcc acc aenv (Array sh e)
+  -- Map         :: TypeR e'
+  --             -> Fun            aenv (e -> e')
+  --             -> acc            aenv (Array sh e)
+  --             -> PreOpenAcc acc aenv (Array sh e')
 
   -- Map a stencil over an array.  In contrast to 'map', the domain of
   -- a stencil function is an entire /neighbourhood/ of each array element.
@@ -797,8 +828,13 @@ instance HasArraysR acc => HasArraysR (PreOpenAcc acc) where
   arraysR (Scan _ _ _ a)              = arraysR a
   arraysR (Scan' _ _ _ a)             = let aR@(ArrayR (ShapeRsnoc sh) tR) = arrayR a
                                          in TupRsingle aR `TupRpair` TupRsingle (ArrayR sh tR)
-  arraysR (Permute _ a _ _)           = arraysR a
+  arraysR (Permute _ a _)           = arraysR a
   arraysR (Backpermute sh _ _ a)      = let ArrayR _ tR = arrayR a
+                                         in arraysRarray sh tR
+  arraysR (Expand tR _ _ a)         = let ArrayR sh _ = arrayR a
+                                         in arraysRarray sh tR
+  arraysR (PermutingExpand tR _ _ a _ def) 
+                                    = let ArrayR sh _ = arrayR def
                                          in arraysRarray sh tR
   arraysR (Stencil _ tR _ _ a)        = let ArrayR sh _ = arrayR a
                                          in arraysRarray sh tR
@@ -1013,8 +1049,10 @@ rnfPreOpenAcc rnfA pacc =
     FoldSeg i f z a s         -> rnfIntegralType i `seq` rnfF f `seq` rnfMaybe rnfE z `seq` rnfA a `seq` rnfA s
     Scan d f z a              -> d `seq` rnfF f `seq` rnfMaybe rnfE z `seq` rnfA a
     Scan' d f z a             -> d `seq` rnfF f `seq` rnfE z `seq` rnfA a
-    Permute f d p a           -> rnfF f `seq` rnfA d `seq` rnfF p `seq` rnfA a
+    -- Permute f d p a           -> rnfF f `seq` rnfA d `seq` rnfF p `seq` rnfA a
+    Permute f d a           -> rnfF f `seq` rnfA d `seq` rnfA a
     Backpermute shr sh f a    -> rnfShapeR shr `seq` rnfE sh `seq` rnfF f `seq` rnfA a
+    Expand tp sz get a        -> rnfTypeR tp `seq` rnfF sz `seq` rnfF get `seq` rnfA a
     Stencil sr tp f b a       ->
       let
         TupRsingle (ArrayR shr _) = arraysR a
@@ -1221,7 +1259,8 @@ liftPreOpenAcc liftA pacc =
     FoldSeg i f z a s         -> [|| FoldSeg $$(liftIntegralType i) $$(liftF f) $$(liftMaybe liftE z) $$(liftA a) $$(liftA s) ||]
     Scan d f z a              -> [|| Scan  $$(liftDirection d) $$(liftF f) $$(liftMaybe liftE z) $$(liftA a) ||]
     Scan' d f z a             -> [|| Scan' $$(liftDirection d) $$(liftF f) $$(liftE z) $$(liftA a) ||]
-    Permute f d p a           -> [|| Permute $$(liftF f) $$(liftA d) $$(liftF p) $$(liftA a) ||]
+    -- Permute f d p a           -> [|| Permute $$(liftF f) $$(liftA d) $$(liftF p) $$(liftA a) ||]
+    Permute f d a           -> [|| Permute $$(liftF f) $$(liftA d) $$(liftA a) ||]
     Backpermute shr sh p a    -> [|| Backpermute $$(liftShapeR shr) $$(liftE sh) $$(liftF p) $$(liftA a) ||]
     Stencil sr tp f b a       ->
       let TupRsingle (ArrayR shr _) = arraysR a

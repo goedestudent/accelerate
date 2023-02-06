@@ -68,6 +68,7 @@ import qualified Data.Array.Accelerate.Smart                        as Smart
 import qualified Data.Array.Accelerate.Sugar.Array                  as Sugar
 import qualified Data.Array.Accelerate.Sugar.Elt                    as Sugar
 import qualified Data.Array.Accelerate.Trafo.Delayed                as AST
+import Data.Array.Accelerate.Prelude (expand')
 
 import Control.DeepSeq
 import Control.Exception
@@ -243,6 +244,7 @@ evalOpenAcc (AST.Manifest pacc) aenv =
     ZipWith tp f acc1 acc2        -> zipWithOp tp (evalF f) (delayed acc1) (delayed acc2)
     Replicate slice slix acc      -> replicateOp slice (evalE slix) (manifest acc)
     Slice slice acc slix          -> sliceOp slice (manifest acc) (evalE slix)
+    Expand tp sz get acc          -> expandOp tp (evalF sz) (evalF get) (delayed acc)
 
     -- Consumers
     -- ---------
@@ -253,7 +255,8 @@ evalOpenAcc (AST.Manifest pacc) aenv =
     Scan  d f (Just z) acc        -> dir d scanlOp  scanrOp  (evalF f) (evalE z) (delayed acc)
     Scan  d f Nothing  acc        -> dir d scanl1Op scanr1Op (evalF f)           (delayed acc)
     Scan' d f z acc               -> dir d scanl'Op scanr'Op (evalF f) (evalE z) (delayed acc)
-    Permute f def p acc           -> permuteOp (evalF f) (manifest def) (evalF p) (delayed acc)
+    Permute f def acc             -> permuteOp (evalF f) (manifest def) (delayed acc)
+    -- Permute f def p acc           -> permuteOp (evalF f) (manifest def) (evalF p) (delayed acc)
     Stencil s tp sten b acc       -> stencilOp s tp (evalF sten) (evalB b) (delayed acc)
     Stencil2 s1 s2 tp sten b1 a1 b2 a2
                                   -> stencil2Op s1 s2 tp (evalF sten) (evalB b1) (delayed a1) (evalB b2) (delayed a2)
@@ -356,6 +359,17 @@ mapOp :: TypeR b
       -> WithReprs (Array sh b)
 mapOp tp f (Delayed (ArrayR shr _) sh xs _)
   = fromFunction' (ArrayR shr tp) sh (\ix -> f (xs ix))
+
+-- DIM1 is constructed as (ShapeRsnoc ShapeRz)
+expandOp :: TypeR e' -> (e -> sh) -> (e -> sh -> e') -> Delayed (Vector e) -> WithReprs (Vector e')
+expandOp tp sz get a@(Delayed (ArrayR shr _) sh xs _)
+  = error "not implemented"
+  -- = fromFunction' (ArrayR shr tp) sh (\ix -> get (xs ix) (szs ix))
+  --   where szs ix = sz (xs ix)
+  --         szs' = let (_, b) = mapOp undefined sz a in (ArrayR shr tp, b)
+  --         u e = unitOp undefined e
+  --         --indices e = generateOp (sz e) (\i -> i)
+  --         -- szs' = (ArrayR shr int, g)
 
 
 zipWithOp
@@ -586,38 +600,43 @@ permuteOp
     :: forall sh sh' e. HasCallStack
     => (e -> e -> e)
     -> WithReprs (Array sh' e)
-    -> (sh -> PrimMaybe sh')
-    -> Delayed   (Array sh  e)
+    -- -> (sh -> PrimMaybe sh')
+    -> Delayed   (Array sh  ((PrimMaybe sh' , e))) 
+    -- -> Delayed   (Array sh  e)
     -> WithReprs (Array sh' e)
-permuteOp f (TupRsingle (ArrayR shr' _), def@(Array _ adef)) p (Delayed (ArrayR shr tp) sh _ ain)
-  = (TupRsingle $ ArrayR shr' tp, adata `seq` Array sh' adata)
+permuteOp f (TupRsingle (ArrayR shr' tp'), def@(Array _ adef)) (Delayed (ArrayR shr tp) sh _ ain)
+-- permuteOp f (TupRsingle (ArrayR shr' _), def@(Array _ adef)) p (Delayed (ArrayR shr tp) sh _ ain)
+  = (TupRsingle $ ArrayR shr' tp', adata `seq` Array sh' adata)
   where
     sh'         = shape def
     n'          = size shr' sh'
     --
     (adata, _)  = runArrayData @e $ do
-      aout <- newArrayData tp n'
+      aout <- newArrayData tp' n'
 
       let -- initialise array with default values
           init i
             | i >= n'   = return ()
             | otherwise = do
-                x <- readArrayData tp adef i
-                writeArrayData tp aout i x
+                x <- readArrayData tp' adef i
+                writeArrayData tp' aout i x
                 init (i+1)
 
           -- project each element onto the destination array and update
           update src
-            = case p src of
-                (0,_)        -> return ()
-                (1,((),dst)) -> do
-                  let i = toIndex shr  sh  src
-                      j = toIndex shr' sh' dst
-                      x = ain i
-                  --
-                  y <- readArrayData tp aout j
-                  writeArrayData tp aout j (f x y)
-                _            -> internalError "unexpected tag"
+            = do
+                let i = toIndex shr  sh  src -- index of the item in the original array
+                let e = ain i                -- actual item in the original array
+                let (m, x) = e
+
+                case m of
+                  (0,_)            -> return () -- item is Nothing, skip it...
+                  (1,((),dst)) -> do        -- Item has dest and item, continue
+                    let j = toIndex shr' sh' dst    -- Index in out array
+                    --
+                    y <- readArrayData tp' aout j      -- Get item in out array
+                    writeArrayData tp' aout j (f x y)  -- Combine in out array
+                  _            -> internalError "unexpected tag"
 
       init 0
       iter shr sh update (>>) (return ())

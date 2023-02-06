@@ -434,8 +434,9 @@ data PreSmartAcc acc exp as where
   Permute       :: ArrayR (Array sh e)
                 -> (SmartExp e -> SmartExp e -> exp e)
                 -> acc (Array sh' e)
-                -> (SmartExp sh -> exp (PrimMaybe sh'))
-                -> acc (Array sh e)
+                -- -> (SmartExp sh -> exp (PrimMaybe sh'))
+                -> acc (Array sh (PrimMaybe sh' , e))
+                -- -> acc (Array sh (((((), PrimMaybe sh')), e)))
                 -> PreSmartAcc acc exp (Array sh' e)
 
   Backpermute   :: ShapeR sh'
@@ -443,6 +444,23 @@ data PreSmartAcc acc exp as where
                 -> (SmartExp sh' -> exp sh)
                 -> acc (Array sh e)
                 -> PreSmartAcc acc exp (Array sh' e)
+
+  Expand   :: TypeR e -> TypeR e'
+              -> (SmartExp e -> exp Int)
+              -> (SmartExp e -> SmartExp Int -> exp e')
+              -> acc (Vector e)
+              -> PreSmartAcc acc exp (Vector e')
+
+  -- Map           :: TypeR e
+  --               -> TypeR e'
+  --               -> (SmartExp e -> exp e')
+  --               -> acc (Array sh e)
+  --               -> PreSmartAcc acc exp (Array sh e')
+
+  -- Generate      :: ArrayR (Array sh e)
+  --               -> exp sh
+  --               -> (SmartExp sh -> exp e)
+  --               -> PreSmartAcc acc exp (Array sh e)
 
   Stencil       :: R.StencilR sh a stencil
                 -> TypeR b
@@ -826,9 +844,12 @@ instance HasArraysR acc => HasArraysR (PreSmartAcc acc exp) where
     Scan _ _ _ _ a            -> arraysR a
     Scan' _ _ _ _ a           -> let repr@(ArrayR (ShapeRsnoc shr) tp) = arrayR a
                                  in  TupRsingle repr `TupRpair` TupRsingle (ArrayR shr tp)
-    Permute _ _ a _ _         -> arraysR a
+    Permute _ _ a _         -> arraysR a
+    -- Permute _ _ a _ _         -> arraysR a
     Backpermute shr _ _ a     -> let ArrayR _ tp = arrayR a
                                  in  TupRsingle (ArrayR shr tp)
+    Expand _ tp _ _ a         -> let ArrayR shr _ = arrayR a
+                                 in  TupRsingle $ ArrayR shr tp
     Stencil s tp _ _ _        -> TupRsingle $ ArrayR (stencilShapeR s) tp
     Stencil2 s _ tp _ _ _ _ _ -> TupRsingle $ ArrayR (stencilShapeR s) tp
 
@@ -1336,6 +1357,7 @@ formatPreAccOp = later $ \case
   Scan' d _ _ _ _     -> bformat ("Scan" % formatDirection % "\'") d
   Permute{}           -> "Permute"
   Backpermute{}       -> "Backpermute"
+  Expand{}            -> "Expand"
   Stencil{}           -> "Stencil"
   Stencil2{}          -> "Stencil2"
   Aforeign{}          -> "Aforeign"

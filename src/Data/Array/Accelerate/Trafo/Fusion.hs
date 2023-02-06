@@ -70,7 +70,6 @@ import Data.Function
 import Lens.Micro                                                 ( over, mapped, _2 )
 import Prelude                                                      hiding ( exp, until )
 
-
 -- Delayed Array Fusion
 -- ====================
 
@@ -128,8 +127,52 @@ convertOpenAcc
     => Config
     -> OpenAcc aenv arrs
     -> DelayedOpenAcc aenv arrs
-convertOpenAcc config = manifest config . computeAcc . embedOpenAcc config
+convertOpenAcc config = manifest config . computeAcc . embedOpenAcc config . fuseExpand
 
+fuseExpandFun :: OpenAfun aenv t -> OpenAfun aenv t
+fuseExpandFun fun = case fun of
+    Abody b    -> Abody (fuseExpand b)
+    Alam lhs b -> Alam lhs (fuseExpandFun b)
+
+fuseExpand ::  OpenAcc aenv arrs -> OpenAcc aenv arrs
+fuseExpand acc@(OpenAcc pacc) = OpenAcc $ case pacc of
+    -- Special cases for fusion with expand
+    Permute f d a -> case fuseExpand a of
+      OpenAcc (Expand (TupRpair _ e) sz get arr) -> PermutingExpand e sz get arr f d
+      a' -> Permute f (fuseExpand d) a'
+    -- Permute f d (OpenAcc (Expand (TupRpair _ e) sz get arr)) -> PermutingExpand e sz get arr f d
+    Map tp f a -> case fuseExpand a of
+      OpenAcc (Expand _ sz get arr) -> Expand tp sz (f `compose2` get) arr
+      a' -> Map tp f a'
+    -- Map tp f (OpenAcc (Expand _ sz get arr))     -> Expand tp sz (f `compose2` get) arr
+
+
+    -- Continuation of AST traversal
+    Alet lhs bnd body         -> Alet lhs (fuseExpand bnd) (fuseExpand body)
+    Avar var                  -> Avar var
+    Apair as bs               -> Apair (fuseExpand as) (fuseExpand bs)
+    Anil                      -> Anil
+    Atrace msg as bs          -> Atrace msg (fuseExpand as) (fuseExpand bs)
+    Apply repr afun acc       -> Apply repr (fuseExpandFun afun) (fuseExpand acc)
+    Aforeign repr asm afun a  -> Aforeign repr asm afun (fuseExpand a)
+    Acond p a1 a2             -> Acond p (fuseExpand a1) (fuseExpand a2)
+    Awhile p f a              -> Awhile (fuseExpandFun p) (fuseExpandFun f) (fuseExpand a)
+    Use repr arr              -> Use repr arr
+    Unit tp x                 -> Unit tp x
+    Reshape shr sh a          -> Reshape shr sh (fuseExpand a)
+    Generate repr sh f        -> Generate repr sh f
+    Transform repr sh p f a   -> Transform repr sh p f (fuseExpand a)
+    Replicate slice sh a      -> Replicate slice sh (fuseExpand a)
+    Slice slice a sh          -> Slice slice (fuseExpand a) sh
+    ZipWith tp f a1 a2        -> ZipWith tp f (fuseExpand a1) (fuseExpand a2)
+    Fold f z a                -> Fold f z (fuseExpand a)
+    FoldSeg i f z a s         -> FoldSeg i f z (fuseExpand a)  s
+    Scan d f z a              -> Scan d f z (fuseExpand a)
+    Scan' d f z a             -> Scan' d f z (fuseExpand a)
+    Backpermute shr sh f a    -> Backpermute shr sh f (fuseExpand a)
+    Expand tp sz get a        -> Expand tp sz get (fuseExpand a)
+    Stencil sr tp f b a       -> Stencil sr tp f b (fuseExpand a)
+    Stencil2 sr1 sr2 tp f b1 a1 b2 a2 -> Stencil2 sr1 sr2 tp f b1 (fuseExpand a1) b2 (fuseExpand a2)
 
 -- Convert array computations into an embeddable delayed representation.
 -- Reapply the embedding function from the first pass and unpack the
@@ -180,6 +223,9 @@ manifest config (OpenAcc pacc) =
     Atrace msg a1 a2        -> Atrace msg (manifest config a1) (manifest config a2)
     Apply repr f a          -> apply repr (cvtAF f) (manifest config a)
     Aforeign repr ff f a    -> Aforeign repr ff (cvtAF f) (manifest config a)
+    Expand t sz get a       -> Expand t sz get (delayed config a)
+    PermutingExpand t sz get a f def
+                            -> PermutingExpand t sz get (delayed config a) f (manifest config def)
 
     -- Producers
     -- ---------
@@ -210,7 +256,8 @@ manifest config (OpenAcc pacc) =
     FoldSeg i f z a s       -> FoldSeg  i f z (delayed config a) (delayed config s)
     Scan  d f z a           -> Scan     d f z (delayed config a)
     Scan' d f z a           -> Scan'    d f z (delayed config a)
-    Permute f d p a         -> Permute  f (manifest config d) p (delayed config a)
+    Permute f d a           -> Permute  f (manifest config d) (delayed config a)
+    -- Permute f d p a         -> Permute  f (manifest config d) p (delayed config a)
     Stencil s t f x a       -> Stencil  s t f x (delayed config a)
     Stencil2 s1 s2 t f x a y b
                             -> Stencil2 s1 s2 t f x (delayed config a) y (delayed config b)
@@ -378,6 +425,9 @@ embedPreOpenAcc config matchAcc embedAcc elimAcc pacc
     Use aR a            -> done $ Use aR a
     Unit t e            -> done $ Unit t (cvtE e)
 
+    Expand t sz get a   -> done $ Expand t sz get (cvtA a)
+    x@PermutingExpand{} -> done $ x
+
     -- Producers
     -- ---------
     --
@@ -420,11 +470,17 @@ embedPreOpenAcc config matchAcc embedAcc elimAcc pacc
     FoldSeg i f z a s           -> embed2 aR (into2M (FoldSeg i)        (cvtF f) (cvtE <$> z)) a s
     Scan  d f z a               -> embed  aR (into2M (Scan  d)          (cvtF f) (cvtE <$> z)) a
     Scan' d f z a               -> embed  aR (into2  (Scan' d)          (cvtF f) (cvtE z)) a
-    Permute f d p a             -> embed2 aR (into2  permute            (cvtF f) (cvtF p)) d a
+    Permute f d a               -> embed2 aR (into  permute            (cvtF f)) d a
+    -- Permute f d p a             -> case a of
+    --                                 OpenAcc (Expand tp sz get a2) -> done $ PermutingExpand tp sz get (cvtA a2) f d p
+    --                                 _  -> embed2 aR (into2  permute            (cvtF f) (cvtF p)) d a
     Stencil s t f x a           -> embed  aR (into2  (stencil1 s t)     (cvtF f) (cvtB x)) a
     Stencil2 s1 s2 t f x a y b  -> embed2 aR (into3  (stencil2 s1 s2 t) (cvtF f) (cvtB x) (cvtB y)) a b
 
   where
+    showA (OpenAcc a) =  showE a
+    showE (Expand _ _ _ _) = "Fuse Expand"
+    showE _ = "Fuse other"
     aR = arraysR pacc
 
     -- If fusion is not enabled, force terms to the manifest representation
@@ -449,7 +505,8 @@ embedPreOpenAcc config matchAcc embedAcc elimAcc pacc
 
     -- Helpers to shuffle the order of arguments to a constructor
     --
-    permute f p d a     = Permute f d p a
+    permute f d a       = Permute f d a
+    -- permute f p d a     = Permute f d p a
 
     -- NOTE: [Stencil fusion]
     --
@@ -1564,7 +1621,8 @@ aletD' embedAcc elimAcc (LeftHandSideSingle ArrayR{}) (Embed env1 cc1) (Embed en
         FoldSeg i f z a s       -> FoldSeg i (cvtF f) (cvtE <$> z) (cvtA a) (cvtA s)
         Scan  d f z a           -> Scan d (cvtF f) (cvtE <$> z) (cvtA a)
         Scan' d f z a           -> Scan' d (cvtF f) (cvtE z) (cvtA a)
-        Permute f d p a         -> Permute (cvtF f) (cvtA d) (cvtF p) (cvtA a)
+        Permute f d a           -> Permute (cvtF f) (cvtA d) (cvtA a)
+        -- Permute f d p a         -> Permute (cvtF f) (cvtA d) (cvtF p) (cvtA a)
         Stencil s t f x a       -> Stencil s t (cvtF f) (cvtB x) (cvtA a)
         Stencil2 s1 s2 t f x a y b
                                 -> Stencil2 s1 s2 t (cvtF f) (cvtB x) (cvtA a) (cvtB y) (cvtA b)
