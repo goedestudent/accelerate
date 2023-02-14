@@ -200,11 +200,24 @@ matchPreOpenAcc matchAcc = match
       , Just Refl <- matchAcc a1 a2
       = Just Refl
 
-    match (Permute f1 d1 p1 a1) (Permute f2 d2 p2 a2)
+    match (Permute f1 d1 a1) (Permute f2 d2 a2)
       | Just Refl <- matchFun f1 f2
       , Just Refl <- matchAcc d1 d2
-      , Just Refl <- matchFun p1 p2
       , Just Refl <- matchAcc a1 a2
+      = Just Refl
+
+    match (Expand _ sz1 get1 a1) (Expand _ sz2 get2 a2)
+      | Just Refl <- matchFun sz1 sz2
+      , Just Refl <- matchFun get1 get2
+      , Just Refl <- matchAcc a1 a2
+      = Just Refl
+
+    match (PermutedExpand _ sz1 get1 a1 f1 d1) (PermutedExpand _ sz2 get2 a2 f2 d2)
+      | Just Refl <- matchFun sz1 sz2
+      , Just Refl <- matchFun get1 get2
+      , Just Refl <- matchAcc a1 a2
+      , Just Refl <- matchFun f1 f2
+      , Just Refl <- matchAcc d1 d2
       = Just Refl
 
     match (Backpermute _ sh1 ix1 a1) (Backpermute _ sh2 ix2 a2)

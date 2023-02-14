@@ -176,6 +176,9 @@ encodePreOpenAcc options encodeAcc pacc =
     Awhile p f a                    -> intHost $(hashQ "Awhile")      <> travAF f <> travAF p <> travA a
     Unit _ e                        -> intHost $(hashQ "Unit")        <> travE e
     Generate _ e f                  -> intHost $(hashQ "Generate")    <> deepE e <> travF f
+    Expand _ f1 f2 a                -> intHost $(hashQ "Expand")      <> travF f1 <> travF f2 <> travA a
+    PermutedExpand _ f1 f2 a f3 d   -> intHost $(hashQ "PermutedExpand") 
+                                                                      <> travF f1 <> travF f2 <> travA a <> travF f3 <> travA d
     -- We don't need to encode the type of 'e' when perfect is False, as 'e' is an expression of type Bool.
     -- We thus use `deep (travE e)` instead of `deepE e`.
     Acond e a1 a2                   -> intHost $(hashQ "Acond")       <> deep (travE e) <> travA a1 <> travA a2
@@ -190,7 +193,7 @@ encodePreOpenAcc options encodeAcc pacc =
     FoldSeg _ f e a s               -> intHost $(hashQ "FoldSeg")     <> travF f  <> encodeMaybe travE e  <> travA a <> travA s
     Scan  d f e a                   -> intHost $(hashQ "Scan")        <> travD d  <> travF f  <> encodeMaybe travE e <> travA a
     Scan' d f e a                   -> intHost $(hashQ "Scan'")       <> travD d  <> travF f  <>             travE e <> travA a
-    Permute f1 a1 f2 a2             -> intHost $(hashQ "Permute")     <> travF f1 <> travA a1 <> travF f2 <> travA a2
+    Permute f1 a1 a2                -> intHost $(hashQ "Permute")     <> travF f1 <> travA a1 <> travA a2
     Stencil s _ f b a               -> intHost $(hashQ "Stencil")     <> travF f  <> encodeBoundary (stencilEltR s) b   <> travA a
     Stencil2 s1 s2 _ f b1 a1 b2 a2  -> intHost $(hashQ "Stencil2")    <> travF f  <> encodeBoundary (stencilEltR s1) b1 <> travA a1 <> encodeBoundary (stencilEltR s2) b2 <> travA a2
 

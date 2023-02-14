@@ -111,7 +111,7 @@ module Data.Array.Accelerate.Prelude (
   the, null, length,
 
   -- * Irregular data-parallelism
-  expand,
+  expand, expand',
 
   -- * Sequence operations
   -- fromSeq, fromSeqElems, fromSeqShapes, toSeqInner, toSeqOuter2, toSeqOuter3, generateSeq,
@@ -2513,12 +2513,12 @@ length = unindex1 . shape
 --
 -- @since 1.3.0.0
 --
-expand :: (Elt a, Elt b)
+expand' :: (Elt a, Elt b)
        => (Exp a -> Exp Int)
        -> (Exp a -> Exp Int -> Exp b)
        -> Acc (Vector a)
        -> Acc (Vector b)
-expand f g xs =
+expand' f g xs =
   let
       szs           = map f xs
       T2 offset len = scanl' (+) 0 szs

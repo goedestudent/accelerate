@@ -205,7 +205,7 @@ module Data.Array.Accelerate (
   (++), concatOn,
 
   -- *** Expansion
-  expand,
+  expand, expand',
 
   -- ** Composition
   -- *** Flow control
@@ -246,6 +246,7 @@ module Data.Array.Accelerate (
   -- *** Permutations
   -- **** Forward permutation (scatter)
   permute,
+  permute',
   scatter,
 
   -- **** Backward permutation (gather)

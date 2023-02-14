@@ -26,7 +26,7 @@
 module Data.Array.Accelerate.Trafo.Substitution (
 
   -- ** Renaming & Substitution
-  inline, inlineVars, compose,
+  inline, inlineVars, compose, compose2,
   subTop, subAtop,
 
   -- ** Weakening
@@ -238,6 +238,25 @@ compose f@(Lam lhsB (Body c)) g@(Lam lhsA (Body b))
   -- = Stats.substitution "compose" . Lam lhs2 . Body $ substitute' f g
 compose _
   _ = error "compose: impossible evaluation"
+
+-- | Composition of unary function with binary function.
+--
+compose2 :: HasCallStack
+        => OpenFun env aenv (b -> c)
+        -> OpenFun env aenv (a -> a' -> b)
+        -> OpenFun env aenv (a -> a' -> c)
+compose2 f@(Lam lhsB (Body c)) g@(Lam lhsA (Lam lhsA' (Body b)))
+  | Stats.substitution "compose2" False = undefined
+  | Just Refl <- isIdentity f = g -- don't rebind an identity function
+
+  | Exists lhsB' <- rebuildLHS lhsB
+  = Lam lhsA
+    $ Lam lhsA'
+    $ Body
+    $ Let lhsB' b -- set argument of f to b
+    $ weakenE (sinkWithLHS lhsB lhsB' $ (weakenWithLHS lhsA') .> (weakenWithLHS lhsA)) c
+compose2 _
+  _ = error "compose2: impossible evaluation"
 
 subTop :: OpenExp env aenv s -> ExpVar (env, s) t -> OpenExp env aenv t
 subTop s (Var _  ZeroIdx     ) = s
@@ -696,8 +715,14 @@ rebuildPreOpenAcc k av acc =
     FoldSeg itp f z a s       -> FoldSeg itp     <$> rebuildFun (pure . IE) av' f <*> rebuildMaybeExp (pure . IE) av' z <*> k av a <*> k av s
     Scan  d f z a             -> Scan  d         <$> rebuildFun (pure . IE) av' f <*> rebuildMaybeExp (pure . IE) av' z <*> k av a
     Scan' d f z a             -> Scan' d         <$> rebuildFun (pure . IE) av' f <*> rebuildOpenExp (pure . IE) av' z <*> k av a
-    Permute f1 a1 f2 a2       -> Permute         <$> rebuildFun (pure . IE) av' f1 <*> k av a1 <*> rebuildFun (pure . IE) av' f2 <*> k av a2
+    Permute f1 a1 a2          -> Permute         <$> rebuildFun (pure . IE) av' f1 <*> k av a1 <*> k av a2
     Backpermute shr sh f a    -> Backpermute shr <$> rebuildOpenExp (pure . IE) av' sh <*> rebuildFun (pure . IE) av' f <*> k av a
+    Expand tp sz get a        -> Expand tp       <$> rebuildFun (pure . IE) av' sz <*> rebuildFun (pure . IE) av' get <*> k av a
+
+    PermutedExpand tp sz get a f1 a1
+                              -> PermutedExpand tp 
+                                                 <$> rebuildFun (pure . IE) av' sz <*> rebuildFun (pure . IE) av' get <*> k av a <*> rebuildFun (pure . IE) av' f1 <*> k av a1
+
     Stencil sr tp f b a       -> Stencil sr tp   <$> rebuildFun (pure . IE) av' f <*> rebuildBoundary av' b  <*> k av a
     Stencil2 s1 s2 tp f b1 a1 b2 a2
                               -> Stencil2 s1 s2 tp <$> rebuildFun (pure . IE) av' f <*> rebuildBoundary av' b1 <*> k av a1 <*> rebuildBoundary av' b2 <*> k av a2

@@ -56,8 +56,10 @@ convertPreOpenAcc = \case
   FoldSeg i f e a s               -> FoldSeg i f e (convertAcc a) (convertAcc s)
   Scan d f e a                    -> Scan d f e (convertAcc a)
   Scan' d f e a                   -> Scan' d f e (convertAcc a)
-  Permute f a1 g a2               -> Permute f (convertAcc a1) g (convertAcc a2)
+  Permute f a1 a2                 -> Permute f (convertAcc a1) (convertAcc a2)
   Backpermute shr sh f a          -> Backpermute shr sh f (convertAcc a)
+  Expand tp sz get a              -> Expand tp sz get (convertAcc a)
+  PermutedExpand tp sz get a c d  -> PermutedExpand tp sz get (convertAcc a) c (convertAcc d)
   Stencil s tp f b a              -> Stencil s tp f b (convertAcc a)
   Stencil2 s1 s2 tp f b1 a1 b2 a2 -> Stencil2 s1 s2 tp f b1 (convertAcc a1) b2 (convertAcc a2)
 

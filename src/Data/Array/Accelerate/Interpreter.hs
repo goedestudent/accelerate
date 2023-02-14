@@ -243,6 +243,9 @@ evalOpenAcc (AST.Manifest pacc) aenv =
     ZipWith tp f acc1 acc2        -> zipWithOp tp (evalF f) (delayed acc1) (delayed acc2)
     Replicate slice slix acc      -> replicateOp slice (evalE slix) (manifest acc)
     Slice slice acc slix          -> sliceOp slice (manifest acc) (evalE slix)
+    Expand{}                      -> error "Encountered an unfused `expand`. When not using the `permute` operation after `expand`, please use `expand'` instead."
+    PermutedExpand tp sz get acc f def             
+                                  -> permutedExpandOp tp (evalF sz) (evalF get) (delayed acc) (evalF f) (manifest def) 
 
     -- Consumers
     -- ---------
@@ -253,7 +256,7 @@ evalOpenAcc (AST.Manifest pacc) aenv =
     Scan  d f (Just z) acc        -> dir d scanlOp  scanrOp  (evalF f) (evalE z) (delayed acc)
     Scan  d f Nothing  acc        -> dir d scanl1Op scanr1Op (evalF f)           (delayed acc)
     Scan' d f z acc               -> dir d scanl'Op scanr'Op (evalF f) (evalE z) (delayed acc)
-    Permute f def p acc           -> permuteOp (evalF f) (manifest def) (evalF p) (delayed acc)
+    Permute f def acc             -> permuteOp (evalF f) (manifest def) (delayed acc)
     Stencil s tp sten b acc       -> stencilOp s tp (evalF sten) (evalB b) (delayed acc)
     Stencil2 s1 s2 tp sten b1 a1 b2 a2
                                   -> stencil2Op s1 s2 tp (evalF sten) (evalB b1) (delayed a1) (evalB b2) (delayed a2)
@@ -357,6 +360,55 @@ mapOp :: TypeR b
 mapOp tp f (Delayed (ArrayR shr _) sh xs _)
   = fromFunction' (ArrayR shr tp) sh (\ix -> f (xs ix))
 
+-- DIM1 is constructed as (ShapeRsnoc ShapeRz)
+permutedExpandOp :: forall sh sh' e e'. HasCallStack => TypeR e' -> (e -> Int) -> (e -> Int -> (PrimMaybe sh', e')) -> Delayed (Vector e) -> (e' -> e' -> e') -> WithReprs (Array sh' e') -> WithReprs (Array sh' e')
+permutedExpandOp tp sz get a@(Delayed (ArrayR shr _) sh _ ain) f (TupRsingle (ArrayR shr' tp'), def@(Array _ adef))
+  = (TupRsingle $ ArrayR shr' tp', adata `seq` Array sh' adata)
+  where
+    sh'         = shape def
+    n'          = size shr' sh'
+    --
+    (adata, _)  = runArrayData @e' $ do
+      aout <- newArrayData tp' n'
+
+      let -- initialise array with default values
+          init i
+            | i >= n'   = return ()
+            | otherwise = do
+                x <- readArrayData tp' adef i
+                writeArrayData tp' aout i x
+                init (i+1)
+
+          expand src
+            = do
+                let i = toIndex shr sh src
+                let elem = ain i
+                let size = sz elem
+
+                let iterate i'
+                      | i' >= size = return ()
+                      | otherwise = do 
+                                      update elem i'
+                                      iterate (i' + 1)
+                iterate 0
+
+          -- project each element onto the destination array and update
+          update e i
+            = do
+                let (m, x) = get e i
+
+                case m of
+                  (0,_)            -> return () -- item is Nothing, skip it...
+                  (1,((),dst)) -> do        -- Item has dest and item, continue
+                    let j = toIndex shr' sh' dst    -- Index in out array
+                    --
+                    y <- readArrayData tp' aout j      -- Get item in out array
+                    writeArrayData tp' aout j (f x y)  -- Combine in out array
+                  _            -> internalError "unexpected tag"
+
+      init 0
+      iter shr sh expand (>>) (return ())
+      return (aout, undefined)
 
 zipWithOp
     :: TypeR c
@@ -586,38 +638,40 @@ permuteOp
     :: forall sh sh' e. HasCallStack
     => (e -> e -> e)
     -> WithReprs (Array sh' e)
-    -> (sh -> PrimMaybe sh')
-    -> Delayed   (Array sh  e)
+    -> Delayed   (Array sh  ((PrimMaybe sh' , e))) 
     -> WithReprs (Array sh' e)
-permuteOp f (TupRsingle (ArrayR shr' _), def@(Array _ adef)) p (Delayed (ArrayR shr tp) sh _ ain)
-  = (TupRsingle $ ArrayR shr' tp, adata `seq` Array sh' adata)
+permuteOp f (TupRsingle (ArrayR shr' tp'), def@(Array _ adef)) (Delayed (ArrayR shr _) sh _ ain)
+  = (TupRsingle $ ArrayR shr' tp', adata `seq` Array sh' adata)
   where
     sh'         = shape def
     n'          = size shr' sh'
     --
     (adata, _)  = runArrayData @e $ do
-      aout <- newArrayData tp n'
+      aout <- newArrayData tp' n'
 
       let -- initialise array with default values
           init i
             | i >= n'   = return ()
             | otherwise = do
-                x <- readArrayData tp adef i
-                writeArrayData tp aout i x
+                x <- readArrayData tp' adef i
+                writeArrayData tp' aout i x
                 init (i+1)
 
           -- project each element onto the destination array and update
           update src
-            = case p src of
-                (0,_)        -> return ()
-                (1,((),dst)) -> do
-                  let i = toIndex shr  sh  src
-                      j = toIndex shr' sh' dst
-                      x = ain i
-                  --
-                  y <- readArrayData tp aout j
-                  writeArrayData tp aout j (f x y)
-                _            -> internalError "unexpected tag"
+            = do
+                let i = toIndex shr  sh  src -- index of the item in the original array
+                let e = ain i                -- actual item in the original array
+                let (m, x) = e
+
+                case m of
+                  (0,_)            -> return () -- item is Nothing, skip it...
+                  (1,((),dst)) -> do        -- Item has dest and item, continue
+                    let j = toIndex shr' sh' dst    -- Index in out array
+                    --
+                    y <- readArrayData tp' aout j      -- Get item in out array
+                    writeArrayData tp' aout j (f x y)  -- Combine in out array
+                  _            -> internalError "unexpected tag"
 
       init 0
       iter shr sh update (>>) (return ())
