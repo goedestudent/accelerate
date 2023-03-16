@@ -476,7 +476,7 @@ embedPreOpenAcc config matchAcc embedAcc elimAcc pacc
     Scan' d f z a               -> embed  aR (into2  (Scan' d)          (cvtF f) (cvtE z)) a
     Permute f d a               -> embed2 aR (into  permute             (cvtF f)) d a
     PermutedExpand t sz get a f dfts
-                        -> done $ PermutedExpand t sz get (cvtA a) f (cvtA dfts)
+                                -> done $ PermutedExpand t sz get (cvtA a) (cvtF f) (cvtA dfts)
     Stencil s t f x a           -> embed  aR (into2  (stencil1 s t)     (cvtF f) (cvtB x)) a
     Stencil2 s1 s2 t f x a y b  -> embed2 aR (into3  (stencil2 s1 s2 t) (cvtF f) (cvtB x) (cvtB y)) a b
     
