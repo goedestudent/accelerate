@@ -36,6 +36,7 @@ module Data.Array.Accelerate.Analysis.Hash (
 ) where
 
 import Data.Array.Accelerate.AST
+import Data.Array.Accelerate.AST.ExpandFusionStrategy
 import Data.Array.Accelerate.AST.Idx
 import Data.Array.Accelerate.AST.LeftHandSide
 import Data.Array.Accelerate.AST.Var
@@ -176,9 +177,9 @@ encodePreOpenAcc options encodeAcc pacc =
     Awhile p f a                    -> intHost $(hashQ "Awhile")      <> travAF f <> travAF p <> travA a
     Unit _ e                        -> intHost $(hashQ "Unit")        <> travE e
     Generate _ e f                  -> intHost $(hashQ "Generate")    <> deepE e <> travF f
-    Expand _ f1 f2 a                -> intHost $(hashQ "Expand")      <> travF f1 <> travF f2 <> travA a
-    PermutedExpand _ f1 f2 a f3 d   -> intHost $(hashQ "PermutedExpand") 
-                                                                      <> travF f1 <> travF f2 <> travA a <> travF f3 <> travA d
+    Expand _ s f1 f2 a              -> intHost $(hashQ "Expand")      <> travF f1 <> travF f2 <> travA a <> encodeExpandStrategy s
+    PermutedExpand _ s f1 f2 a f3 d -> intHost $(hashQ "PermutedExpand") 
+                                                                      <> travF f1 <> travF f2 <> travA a <> travF f3 <> travA d <> encodeExpandStrategy s
     -- We don't need to encode the type of 'e' when perfect is False, as 'e' is an expression of type Bool.
     -- We thus use `deep (travE e)` instead of `deepE e`.
     Acond e a1 a2                   -> intHost $(hashQ "Acond")       <> deep (travE e) <> travA a1 <> travA a2

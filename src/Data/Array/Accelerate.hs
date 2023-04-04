@@ -166,6 +166,8 @@
 
 module Data.Array.Accelerate (
 
+  ExpandFusionStrategy(..),
+
   -- * The /Accelerate/ Array Language
   -- ** Embedded array computations
   Acc,

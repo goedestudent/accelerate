@@ -566,8 +566,8 @@ usesOfPreAcc withShape countAcc idx = count
       Scan  _ f z a              -> countF f  + countME z + countA a
       Scan' _ f z a              -> countF f  + countE z  + countA a
       Permute f1 a1 a2           -> countF f1 + countA a1 + countA a2
-      Expand _ sz gt a           -> countF sz + countF gt + countA a
-      PermutedExpand _ sz gt a1 f a2
+      Expand _ _ sz gt a         -> countF sz + countF gt + countA a
+      PermutedExpand _ _ sz gt a1 f a2
                                  -> countF sz + countF gt + countA a1 + countF f + countA a2
       Backpermute _ sh f a       -> countE sh + countF f  + countA a
       Stencil _ _ f _ a          -> countF f  + countA a

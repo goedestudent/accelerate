@@ -26,6 +26,8 @@
 
 module Data.Array.Accelerate.Language (
 
+  ExpandFusionStrategy(..),
+
   -- * Array construction
   use, unit, replicate, generate,
 
@@ -102,6 +104,7 @@ module Data.Array.Accelerate.Language (
 ) where
 
 import Data.Array.Accelerate.AST                                    ( PrimFun(..) )
+import Data.Array.Accelerate.AST.ExpandFusionStrategy               ( ExpandFusionStrategy(..) )
 import Data.Array.Accelerate.Pattern
 import Data.Array.Accelerate.Representation.Array                   ( ArrayR(..) )
 import Data.Array.Accelerate.Representation.Shape                   ( ShapeR(..) )
@@ -938,11 +941,12 @@ backpermute = Acc $$$ applyAcc (Backpermute $ shapeR @sh')
 --
 expand
     :: forall a b. (Elt a, Elt b)
-    => (Exp a -> Exp Int)               -- ^ expansion size function
+    => ExpandFusionStrategy
+    -> (Exp a -> Exp Int)               -- ^ expansion size function
     -> (Exp a -> (Exp Int -> Exp b))    -- ^ expansion element generation function
     -> Acc (Vector  a)                  -- ^ source array
     -> Acc (Vector  b)
-expand = Acc $$$ applyAcc (Expand (eltR @a) (eltR @b))
+expand strategy = Acc $$$ applyAcc (Expand (eltR @a) (eltR @b) strategy)
 
 -- Stencil operations
 -- ------------------

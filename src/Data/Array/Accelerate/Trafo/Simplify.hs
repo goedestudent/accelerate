@@ -109,8 +109,9 @@ simplifyPreOpenAcc = \case
   Scan d f e a                    -> Scan d (simplifyFun f) (fmap simplifyExp e) (simplifyOpenAcc a)
   Scan' d f e a                   -> Scan' d (simplifyFun f) (simplifyExp e) (simplifyOpenAcc a)
   Permute f a1 a2                 -> Permute (simplifyFun f) (simplifyOpenAcc a1) (simplifyOpenAcc a2)
-  Expand t sz gt a                -> Expand t (simplifyFun sz) (simplifyFun gt) (simplifyOpenAcc a)
-  PermutedExpand t sz gt a f dfts -> PermutedExpand t (simplifyFun sz) (simplifyFun gt) (simplifyOpenAcc a) (simplifyFun f) (simplifyOpenAcc dfts)
+  Expand t s sz gt a              -> Expand t s (simplifyFun sz) (simplifyFun gt) (simplifyOpenAcc a)
+  PermutedExpand t s sz gt a f dfts
+                                  -> PermutedExpand t s (simplifyFun sz) (simplifyFun gt) (simplifyOpenAcc a) (simplifyFun f) (simplifyOpenAcc dfts)
   Backpermute shr sh f a          -> Backpermute shr (simplifyExp sh) (simplifyFun f) (simplifyOpenAcc a)
   Stencil s eR f b a              -> Stencil s eR (simplifyFun f) b (simplifyOpenAcc a)
   Stencil2 s1 s2 eR f b1 a1 b2 a2 -> Stencil2 s1 s2 eR (simplifyFun f) b1 (simplifyOpenAcc a1) b2 (simplifyOpenAcc a2)

@@ -241,8 +241,8 @@ prettyDelayedOpenAcc detail ctx aenv (Manifest pacc) =
     Scan d f Nothing  a             -> ppD "scan" d "1" .$ [ ppF f,  ppA a ]
     Scan' d f z a                   -> ppD "scan" d "'" .$ [ ppF f,  ppE z, ppA a ]
     Permute f dfts xs               -> "permute"        .$ [ ppF f, ppA dfts, ppA xs ]
-    Expand _  sz get xs             -> "expand"         .$ [ ppF sz, ppF get, ppA xs ]
-    PermutedExpand _  sz get xs f dfts 
+    Expand _ _ sz get xs            -> "expand"         .$ [ ppF sz, ppF get, ppA xs ]
+    PermutedExpand _ _ sz get xs f dfts
                                     -> "expand-then-permute"
                                                         .$ [ ppF sz, ppF get, ppA xs, ppF f, ppA dfts ]
     Backpermute _ sh p xs           -> "backpermute"    .$ [ ppE sh, ppF p, ppA xs ]

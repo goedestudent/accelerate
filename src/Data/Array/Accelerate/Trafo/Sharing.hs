@@ -355,7 +355,7 @@ convertSharingAcc config alyt aenv (ScopedAcc lams (AccSharing _ preAcc))
                                   -> AST.Permute (cvtF2 tp tp f) (cvtA dftAcc) (cvtA acc)
       Backpermute shr newDim perm acc
                                   -> AST.Backpermute shr (cvtE newDim) (cvtF1 (shapeType shr) perm) (cvtA acc)
-      Expand t1 t2 sz get acc     -> AST.Expand t2 (cvtF1 t1 sz) (cvtF2 t1 (eltR @Int) get) (cvtA acc)
+      Expand t1 t2 s sz get acc   -> AST.Expand t2 s (cvtF1 t1 sz) (cvtF2 t1 (eltR @Int) get) (cvtA acc)
       Stencil stencil tp f boundary acc
         -> AST.Stencil stencil
                        tp
@@ -1560,11 +1560,11 @@ makeOccMapSharingAcc config accOccMap = traverseAcc
                                              (p'  , h2) <- traverseFun1 lvl (shapeType shr) p
                                              (acc', h3) <- traverseAcc lvl acc
                                              return (Backpermute shr e' p' acc', h1 `max` h2 `max` h3 + 1)
-            Expand t1 t2 sz get acc -> do
+            Expand t1 t2 s sz get acc   -> do
                                              (sz' , h1) <- traverseFun1 lvl t1 sz
                                              (get', h2) <- traverseFun2 lvl t1 (eltR @Int) get
                                              (acc', h3) <- traverseAcc lvl acc
-                                             return (Expand t1 t2 sz' get' acc', h1 `max` h2 `max` h3 + 1)
+                                             return (Expand t1 t2 s sz' get' acc', h1 `max` h2 `max` h3 + 1)
             Stencil s tp f bnd acc      -> do
                                              (f'  , h1) <- makeOccMapStencil1 config accOccMap s lvl f
                                              (bnd', h2) <- traverseBoundary lvl (stencilShapeR s) bnd
@@ -2435,13 +2435,13 @@ determineScopesSharingAcc config accOccMap = scopesAcc
                                      in
                                      reconstruct (Backpermute shr sh' fp' acc')
                                        (accCount1 +++ accCount2 +++ accCount3)
-          Expand t1 t2 sz get acc
+          Expand t1 t2 s sz get acc
                                   -> let
                                        (sz' , accCount1) = scopesFun1 sz
                                        (get', accCount2) = scopesFun2 get
                                        (acc', accCount3) = scopesAcc  acc
                                      in
-                                       reconstruct (Expand t1 t2 sz' get' acc') (accCount1 +++ accCount2 +++ accCount3)
+                                       reconstruct (Expand t1 t2 s sz' get' acc') (accCount1 +++ accCount2 +++ accCount3)
           Stencil sr tp st bnd acc      -> let
                                        (st' , accCount1) = scopesStencil1 acc st
                                        (bnd', accCount2) = scopesBoundary bnd

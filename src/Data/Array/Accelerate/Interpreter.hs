@@ -244,7 +244,7 @@ evalOpenAcc (AST.Manifest pacc) aenv =
     Replicate slice slix acc      -> replicateOp slice (evalE slix) (manifest acc)
     Slice slice acc slix          -> sliceOp slice (manifest acc) (evalE slix)
     Expand{}                      -> error "Encountered an unfused `expand`. When not using the `permute` operation after `expand`, please use `expand'` instead."
-    PermutedExpand tp sz get acc f def             
+    PermutedExpand tp _ sz get acc f def           
                                   -> permutedExpandOp tp (evalF sz) (evalF get) (delayed acc) (evalF f) (manifest def) 
 
     -- Consumers

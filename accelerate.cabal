@@ -382,6 +382,7 @@ library
 
         -- For backend development (hidden)
         Data.Array.Accelerate.AST
+        Data.Array.Accelerate.AST.ExpandFusionStrategy
         Data.Array.Accelerate.AST.Environment
         Data.Array.Accelerate.AST.Idx
         Data.Array.Accelerate.AST.LeftHandSide

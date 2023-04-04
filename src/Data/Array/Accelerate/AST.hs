@@ -133,6 +133,7 @@ module Data.Array.Accelerate.AST (
 
 ) where
 
+import Data.Array.Accelerate.AST.ExpandFusionStrategy
 import Data.Array.Accelerate.AST.Idx
 import Data.Array.Accelerate.AST.LeftHandSide
 import Data.Array.Accelerate.AST.Var
@@ -440,6 +441,7 @@ data PreOpenAcc (acc :: Type -> Type -> Type) aenv a where
   -- that represents some input with an underlying nested structure, and returns
   -- the fully flattened version of the full (expanded) input.
   Expand      :: TypeR e'
+              -> ExpandFusionStrategy                           -- strategy to use when fusing expand with permute
               -> Fun            aenv (e -> Int)                 -- size function
               -> Fun            aenv (e -> Int -> e')           -- element creation function
               -> acc            aenv (Vector e)                 -- source array
@@ -450,6 +452,7 @@ data PreOpenAcc (acc :: Type -> Type -> Type) aenv a where
   PermutedExpand :: 
               -- Data for the expand
               TypeR e'
+              -> ExpandFusionStrategy                           -- strategy to use when fusing permute and expand
               -> Fun            aenv (e -> Int)                 -- size function
               -> Fun            aenv (e -> Int -> (PrimMaybe sh', e'))           -- element creation function
               -> acc            aenv (Vector e)                 -- source array
@@ -822,9 +825,9 @@ instance HasArraysR acc => HasArraysR (PreOpenAcc acc) where
   arraysR (Permute _ a _)             = arraysR a
   arraysR (Backpermute sh _ _ a)      = let ArrayR _ tR = arrayR a
                                          in arraysRarray sh tR
-  arraysR (Expand tR _ _ a)           = let ArrayR sh _ = arrayR a
+  arraysR (Expand tR _ _ _ a)         = let ArrayR sh _ = arrayR a
                                          in arraysRarray sh tR
-  arraysR (PermutedExpand tR _ _ _ _ a) 
+  arraysR (PermutedExpand tR _ _ _ _ _ a) 
                                       = let ArrayR sh _ = arrayR a
                                          in arraysRarray sh tR
   arraysR (Stencil _ tR _ _ a)        = let ArrayR sh _ = arrayR a
@@ -1042,8 +1045,8 @@ rnfPreOpenAcc rnfA pacc =
     Scan' d f z a             -> d `seq` rnfF f `seq` rnfE z `seq` rnfA a
     Permute f d a             -> rnfF f `seq` rnfA d `seq` rnfA a
     Backpermute shr sh f a    -> rnfShapeR shr `seq` rnfE sh `seq` rnfF f `seq` rnfA a
-    Expand tp sz get a        -> rnfTypeR tp `seq` rnfF sz `seq` rnfF get `seq` rnfA a
-    PermutedExpand tp sz get a comb def
+    Expand tp _ sz get a      -> rnfTypeR tp `seq` rnfF sz `seq` rnfF get `seq` rnfA a
+    PermutedExpand tp _ sz get a comb def
                               -> rnfTypeR tp `seq` rnfF sz `seq` rnfF get `seq` rnfA a `seq` rnfF comb `seq` rnfA def
     Stencil sr tp f b a       ->
       let
@@ -1252,9 +1255,9 @@ liftPreOpenAcc liftA pacc =
     Scan d f z a              -> [|| Scan  $$(liftDirection d) $$(liftF f) $$(liftMaybe liftE z) $$(liftA a) ||]
     Scan' d f z a             -> [|| Scan' $$(liftDirection d) $$(liftF f) $$(liftE z) $$(liftA a) ||]
     Permute f d a             -> [|| Permute $$(liftF f) $$(liftA d) $$(liftA a) ||]
-    Expand tp sz get a        -> [|| Expand $$(liftTypeR tp) $$(liftF sz) $$(liftF get) $$(liftA a) ||]
-    PermutedExpand tp sz get a f d
-                              -> [|| PermutedExpand $$(liftTypeR tp) $$(liftF sz) $$(liftF get) $$(liftA a) $$(liftF f) $$(liftA d) ||]
+    Expand tp s sz get a      -> [|| Expand $$(liftTypeR tp) $$(liftExpandStrategy s) $$(liftF sz) $$(liftF get) $$(liftA a) ||]
+    PermutedExpand tp s sz get a f d
+                              -> [|| PermutedExpand $$(liftTypeR tp) $$(liftExpandStrategy s) $$(liftF sz) $$(liftF get) $$(liftA a) $$(liftF f) $$(liftA d)||]
     Backpermute shr sh p a    -> [|| Backpermute $$(liftShapeR shr) $$(liftE sh) $$(liftF p) $$(liftA a) ||]
     Stencil sr tp f b a       ->
       let TupRsingle (ArrayR shr _) = arraysR a

@@ -106,6 +106,7 @@ import Data.Array.Accelerate.AST                                    ( Direction(
                                                                     , PrimBool, PrimMaybe
                                                                     , PrimFun(..), primFunType
                                                                     , PrimConst(..), primConstType )
+import Data.Array.Accelerate.AST.ExpandFusionStrategy
 import Data.Primitive.Vec
 
 import Data.Kind
@@ -444,6 +445,7 @@ data PreSmartAcc acc exp as where
                 -> PreSmartAcc acc exp (Array sh' e)
 
   Expand        :: TypeR e -> TypeR e'
+                -> ExpandFusionStrategy
                 -> (SmartExp e -> exp Int)
                 -> (SmartExp e -> SmartExp Int -> exp e')
                 -> acc (Vector e)
@@ -834,7 +836,7 @@ instance HasArraysR acc => HasArraysR (PreSmartAcc acc exp) where
     Permute _ _ a _           -> arraysR a
     Backpermute shr _ _ a     -> let ArrayR _ tp = arrayR a
                                  in  TupRsingle (ArrayR shr tp)
-    Expand _ tp _ _ a         -> let ArrayR shr _ = arrayR a
+    Expand _ tp _ _ _ a       -> let ArrayR shr _ = arrayR a
                                  in  TupRsingle $ ArrayR shr tp
     Stencil s tp _ _ _        -> TupRsingle $ ArrayR (stencilShapeR s) tp
     Stencil2 s _ tp _ _ _ _ _ -> TupRsingle $ ArrayR (stencilShapeR s) tp

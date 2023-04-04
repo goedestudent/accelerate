@@ -717,10 +717,10 @@ rebuildPreOpenAcc k av acc =
     Scan' d f z a             -> Scan' d         <$> rebuildFun (pure . IE) av' f <*> rebuildOpenExp (pure . IE) av' z <*> k av a
     Permute f1 a1 a2          -> Permute         <$> rebuildFun (pure . IE) av' f1 <*> k av a1 <*> k av a2
     Backpermute shr sh f a    -> Backpermute shr <$> rebuildOpenExp (pure . IE) av' sh <*> rebuildFun (pure . IE) av' f <*> k av a
-    Expand tp sz get a        -> Expand tp       <$> rebuildFun (pure . IE) av' sz <*> rebuildFun (pure . IE) av' get <*> k av a
+    Expand tp s sz get a      -> Expand tp s <$> rebuildFun (pure . IE) av' sz <*> rebuildFun (pure . IE) av' get <*> k av a
 
-    PermutedExpand tp sz get a f1 a1
-                              -> PermutedExpand tp 
+    PermutedExpand tp s sz get a f1 a1
+                              -> PermutedExpand tp s
                                                  <$> rebuildFun (pure . IE) av' sz <*> rebuildFun (pure . IE) av' get <*> k av a <*> rebuildFun (pure . IE) av' f1 <*> k av a1
 
     Stencil sr tp f b a       -> Stencil sr tp   <$> rebuildFun (pure . IE) av' f <*> rebuildBoundary av' b  <*> k av a

@@ -206,13 +206,13 @@ matchPreOpenAcc matchAcc = match
       , Just Refl <- matchAcc a1 a2
       = Just Refl
 
-    match (Expand _ sz1 get1 a1) (Expand _ sz2 get2 a2)
+    match (Expand _ _ sz1 get1 a1) (Expand _ _ sz2 get2 a2)
       | Just Refl <- matchFun sz1 sz2
       , Just Refl <- matchFun get1 get2
       , Just Refl <- matchAcc a1 a2
       = Just Refl
 
-    match (PermutedExpand _ sz1 get1 a1 f1 d1) (PermutedExpand _ sz2 get2 a2 f2 d2)
+    match (PermutedExpand _ _ sz1 get1 a1 f1 d1) (PermutedExpand _ _ sz2 get2 a2 f2 d2)
       | Just Refl <- matchFun sz1 sz2
       , Just Refl <- matchFun get1 get2
       , Just Refl <- matchAcc a1 a2
