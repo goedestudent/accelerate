@@ -130,12 +130,6 @@ convertOpenAcc
     -> DelayedOpenAcc aenv arrs
 convertOpenAcc config = manifest config . computeAcc . embedOpenAcc config . fuseExpand config
 
-fuseExpandFun :: OpenAfun aenv t -> OpenAfun aenv t
-fuseExpandFun fun = case fun of
-    Abody b    -> Abody (fuseExpand b)
-    Alam lhs b -> Alam lhs (fuseExpandFun b)
-
-
 fuseExpandFun :: Config -> OpenAfun aenv t -> OpenAfun aenv t
 fuseExpandFun config fun = case fun of
     Abody b    -> Abody (fuseExpand config b)
