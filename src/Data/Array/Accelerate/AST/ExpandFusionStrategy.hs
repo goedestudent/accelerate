@@ -20,13 +20,15 @@ import Data.ByteString.Builder.Extra
 import Data.Hashable (hashWithSalt)
 
 data ExpandFusionStrategy 
-    = Basic           -- | Most basic variant. Every thread handles 1 element of the input (expands and permutes it).
-    | Blocks          -- | Slightly better than basic. Every thread block handles 1 element of the input. Every thread expands 1 element-index combination and permutes it. Every thread will read the input element to do this, thus every input element will be read multiple times.
-    | Shuffle         -- | Every warp handles 1 element of the input. Every lane expands 1 element-index combination and permutes it. A value is read only once per warp.
-    | BlockShuffle    -- | Every thread block handles 1 element of the input. This element is read only once per warp. Every thread/lane expands 1 element-index combination and permutes it.
-    | SharedMem       -- | Every thread block handles 1 element of the input. The element is read only once per block and stored in shared memory. Every thread expands 1 element-index combination and permutes it.
-    | MultiBlock Int  -- | Every block handles multiple elements of the input, this should spread "random" inbalance. Within a block, the work is then spread over all threads.
-    | MultiBlock' Int -- | Same as MultiBlock, but uses a rolled version of the binary search.
+    = Basic            -- | Most basic variant. Every thread handles 1 element of the input (expands and permutes it).
+    | Blocks           -- | Slightly better than basic. Every thread block handles 1 element of the input. Every thread expands 1 element-index combination and permutes it. Every thread will read the input element to do this, thus every input element will be read multiple times.
+    | Shuffle          -- | Every warp handles 1 element of the input. Every lane expands 1 element-index combination and permutes it. A value is read only once per warp.
+    | BlockShuffle     -- | Every thread block handles 1 element of the input. This element is read only once per warp. Every thread/lane expands 1 element-index combination and permutes it.
+    | SharedMem        -- | Every thread block handles 1 element of the input. The element is read only once per block and stored in shared memory. Every thread expands 1 element-index combination and permutes it.
+    | MultiBlock Int   -- | Every block handles multiple elements of the input, this should spread "random" inbalance. Within a block, the work is then spread over all threads. To calculate the prefix sum, it uses an unrolled version of Sklansky.
+    | MultiBlock' Int  -- | Same as MultiBlock, but uses a rolled version of the binary search and performs a sequential prefix sum.
+    | MultiBlock'' Int -- | Same as MultiBlock, but performs a sequential prefix sum.
+
     deriving Show
 
 liftExpandStrategy :: ExpandFusionStrategy -> CodeQ ExpandFusionStrategy
@@ -37,6 +39,7 @@ liftExpandStrategy Shuffle   = [|| Shuffle ||]
 liftExpandStrategy SharedMem = [|| SharedMem ||]
 liftExpandStrategy (MultiBlock i) = [|| MultiBlock i ||]
 liftExpandStrategy (MultiBlock' i) = [|| MultiBlock' i ||]
+liftExpandStrategy (MultiBlock'' i) = [|| MultiBlock'' i ||]
 
 encodeExpandStrategy :: ExpandFusionStrategy -> Builder
 encodeExpandStrategy Basic = intHost $(hashQ "Basic")
@@ -46,3 +49,4 @@ encodeExpandStrategy Shuffle = intHost $(hashQ "Shuffle")
 encodeExpandStrategy SharedMem = intHost $(hashQ "SharedMem")
 encodeExpandStrategy (MultiBlock i) = intHost $(hashQ "MultiBlock") <> intHost i
 encodeExpandStrategy (MultiBlock' i) = intHost $(hashQ "MultiBlock'") <> intHost i
+encodeExpandStrategy (MultiBlock'' i) = intHost $(hashQ "MultiBlock''") <> intHost i
